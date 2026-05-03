@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "2.0",
+  "appName": "tf-smoke-test",
+  "displayName": "TF Smoke Test (dev)",
+  "environment": "dev",
+  "businessUnit": "PLATFORM",
+  "changeTicket": "CHG000001",
+  "owner": {
+    "groupObjectId": "00000000-0000-0000-0000-000000000000",
+    "primaryContact": "dejan.gregor@gmail.com"
+  },
+  "tags": {
+    "purpose": "pipeline-smoke-test",
+    "environment": "dev"
+  },
+  "signInAudience": "AzureADMyOrg",
+  "tokenVersion": 2,
+  "platforms": {
+    "spa": {
+      "enabled": false,
+      "redirectUris": []
+    },
+    "web": {
+      "enabled": false,
+      "redirectUris": [],
+      "implicitGrant": {
+        "accessToken": false,
+        "idToken": false
+      }
+    },
+    "publicClient": {
+      "enabled": false,
+      "redirectUris": []
+    }
+  },
+  "exposedApi": {
+    "enabled": false,
+    "scopes": [],
+    "appRoles": []
+  },
+  "requiredPermissions": [
+    {
+      "resource": "MicrosoftGraph",
+      "delegated": ["User.Read", "openid", "profile", "offline_access"],
+      "application": []
+    }
+  ],
+  "federatedCredentials": []
+}
