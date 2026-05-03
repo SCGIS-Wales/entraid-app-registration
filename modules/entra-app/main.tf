@@ -74,6 +74,65 @@ locals {
   }
 
   pre_authorized = try(local.params.preAuthorizedApplications, [])
+
+  // Resolve permissions per resource for the consent layer below.
+  // Each entry has: resource (original "MicrosoftGraph"|UUID), resource_id (resolved GUID).
+  permissions_resolved = [
+    for permission in try(local.params.requiredPermissions, []) : merge(permission, {
+      resource_id = permission.resource == "MicrosoftGraph" ? local.ms_graph_app_id : permission.resource
+    })
+  ]
+
+  // Unique resource_ids — used to look up each downstream service principal.
+  unique_resource_ids = toset([for p in local.permissions_resolved : p.resource_id])
+
+  // Application role assignments to grant. Each is keyed by "<resource>/<role>"
+  // so duplicate declarations collapse cleanly.
+  app_role_assignments = flatten([
+    for p in local.permissions_resolved : (
+      p.resource == "MicrosoftGraph" ? [
+        for name in try(p.application, []) : {
+          resource_id = p.resource_id
+          role_id     = local.ms_graph_application[name]
+        }
+        ] : [
+        for guid in try(p.application, []) : {
+          resource_id = p.resource_id
+          role_id     = guid
+        }
+      ]
+    )
+  ])
+
+  // Delegated scopes to admin-consent, grouped by resource_id. For MS Graph
+  // the consumer supplies friendly names; for any other resource the consumer
+  // supplies scope GUIDs which we translate to names by reading the
+  // downstream SP's oauth2_permission_scopes (the resource expects names, not
+  // IDs, in claim_values).
+  delegated_grants_by_resource = {
+    for resource_id in local.unique_resource_ids : resource_id => flatten([
+      for p in local.permissions_resolved :
+      p.resource_id == resource_id ? (
+        p.resource == "MicrosoftGraph" ? try(p.delegated, []) : [
+          for guid in try(p.delegated, []) :
+          lookup(
+            { for s in data.azuread_service_principal.downstream[resource_id].oauth2_permission_scopes : s.id => s.value },
+            guid,
+            guid // fall through with the GUID; the resource will fail with a clear error
+          )
+        ]
+      ) : []
+    ])
+  }
+}
+
+// Look up each downstream resource's service principal once. Used to resolve
+// the resource_object_id for app role assignments and to translate scope GUIDs
+// to names for delegated permission grants.
+data "azuread_service_principal" "downstream" {
+  for_each = local.unique_resource_ids
+
+  client_id = each.value
 }
 
 // The calling identity (SP in CI, user locally) needs to own every app it
@@ -247,4 +306,33 @@ resource "azuread_application_pre_authorized" "this" {
   application_id       = azuread_application.this.id
   authorized_client_id = each.value.appId
   permission_ids       = each.value.delegatedScopeIds
+}
+
+// Admin consent on application permissions: each declared `application` entry
+// becomes an app role assignment from this app's SP onto the resource SP.
+// Requires the pipeline SP to hold AppRoleAssignment.ReadWrite.All on Graph.
+resource "azuread_app_role_assignment" "this" {
+  for_each = { for a in local.app_role_assignments : "${a.resource_id}/${a.role_id}" => a }
+
+  app_role_id         = each.value.role_id
+  principal_object_id = azuread_service_principal.this.object_id
+  resource_object_id  = data.azuread_service_principal.downstream[each.value.resource_id].object_id
+}
+
+// Admin consent on delegated permissions: one grant per (this SP, resource SP)
+// pair carrying all declared scopes. Requires the pipeline SP to hold
+// DelegatedPermissionGrant.ReadWrite.All on Graph.
+//
+// Note: this resource manages the *complete* set of delegated permissions for
+// the (sp, resource) pair. Anything granted out-of-band that isn't in
+// claim_values will be revoked at next apply.
+resource "azuread_service_principal_delegated_permission_grant" "this" {
+  for_each = {
+    for resource_id, scopes in local.delegated_grants_by_resource : resource_id => scopes
+    if length(scopes) > 0
+  }
+
+  service_principal_object_id          = azuread_service_principal.this.object_id
+  resource_service_principal_object_id = data.azuread_service_principal.downstream[each.key].object_id
+  claim_values                         = each.value
 }

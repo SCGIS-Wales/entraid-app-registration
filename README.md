@@ -90,12 +90,21 @@ terraform init \
 terraform plan
 ```
 
+## Admin consent
+
+The pipeline grants admin consent on every permission a parameters file
+declares — application permissions become `azuread_app_role_assignment` and
+delegated permissions become `azuread_service_principal_delegated_permission_grant`.
+The per-env pipeline SP holds `AppRoleAssignment.ReadWrite.All` and
+`DelegatedPermissionGrant.ReadWrite.All` on Microsoft Graph for this.
+
+Note that the delegated-permission-grant resource manages the **complete** set
+of delegated permissions for each (this SP, resource SP) pair. Permissions
+granted out of band (e.g. via the portal) that aren't in the parameters file
+will be revoked at the next apply.
+
 ## Limitations
 
-- **Admin consent**: this pipeline declares `requiredPermissions` on each
-  app, but does **not** grant admin consent for them. Do that manually in
-  the Entra portal or extend the module with `azuread_app_role_assignment`
-  resources (the pipeline SP would also need `AppRoleAssignment.ReadWrite.All`).
 - **Single tenant**: dev/qual/prod share one Entra tenant; isolation is via
   display-name prefixes embedded in each app's `displayName`. If you need
   hard tenant isolation, fork the repo per tenant or extend the schema.
@@ -103,3 +112,8 @@ terraform plan
   it owns. Importing an app created outside the pipeline requires either
   adding the SP as an owner (in the portal) or temporarily granting
   `Application.ReadWrite.All`.
+- **Cross-API perms order of operations**: if app A declares delegated
+  permissions on app B (the OBO pattern), app B must already exist in the
+  tenant before app A's plan runs — the module looks up B's service principal
+  by appId at plan time. Provision the downstream API first, then the
+  middle-tier.
