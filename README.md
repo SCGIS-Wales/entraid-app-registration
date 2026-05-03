@@ -3,7 +3,22 @@
 Self-service Entra ID application registration as code.
 GitHub Actions runs Terraform against `parameters/parameters.schema.json`-shaped
 JSON files to create one Entra app + service principal + federated credentials
-per file, across three environments.
+per file, across three environments. Admin consent on declared permissions
+is granted automatically.
+
+## Use cases
+
+- **[Master RFC](docs/RFC.md)** — architecture, schema rationale, security review.
+- **[RFC 001 — SPA](docs/rfc-001-spa.md)** — browser app via PKCE, no secret.
+- **[RFC 002 — OBO middle-tier API](docs/rfc-002-obo.md)** — server-side API
+  exchanging user tokens for downstream tokens.
+- **[RFC 003 — AWS Agent passwordless OIDC](docs/rfc-003-aws-agent-passwordless.md)**
+  — AWS-resident workload (Lambda, ECS, EKS, Bedrock Agent) authenticating
+  to Entra via AWS Outbound Identity Federation. AWS-side bootstrap module
+  lives at [`terraform/aws-bootstrap/`](terraform/aws-bootstrap/).
+
+Working parameters JSON examples for each are in
+[`parameters/examples/`](parameters/examples/).
 
 ```
 PR opens                       merge to main

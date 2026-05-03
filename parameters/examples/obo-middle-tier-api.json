@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "2.0",
+  "appName": "scgis-portal-api",
+  "displayName": "SCGIS Wales Portal API",
+  "environment": "dev",
+  "businessUnit": "PLATFORM",
+  "changeTicket": "CHG000002",
+  "owner": {
+    "groupObjectId": "00000000-0000-0000-0000-000000000000",
+    "primaryContact": "dejan.gregor@gmail.com"
+  },
+  "tags": {
+    "data-classification": "internal",
+    "environment": "dev",
+    "use-case": "obo-middle-tier"
+  },
+  "signInAudience": "AzureADMyOrg",
+  "tokenVersion": 2,
+  "platforms": {
+    "spa": {
+      "enabled": false,
+      "redirectUris": []
+    },
+    "web": {
+      "enabled": false,
+      "redirectUris": [],
+      "implicitGrant": {
+        "accessToken": false,
+        "idToken": false
+      }
+    },
+    "publicClient": {
+      "enabled": false,
+      "redirectUris": []
+    }
+  },
+  "exposedApi": {
+    "enabled": true,
+    "identifierUri": "api://scgis-portal-api-dev",
+    "scopes": [
+      {
+        "value": "Soil.Read",
+        "type": "User",
+        "adminConsentDisplayName": "Read soil conservation data",
+        "adminConsentDescription": "Allows the application to read soil-conservation records on behalf of the signed-in user.",
+        "userConsentDisplayName": "Read soil conservation data",
+        "userConsentDescription": "Allow this app to read soil-conservation records on your behalf."
+      },
+      {
+        "value": "Site.ReadWrite",
+        "type": "Admin",
+        "adminConsentDisplayName": "Manage conservation sites",
+        "adminConsentDescription": "Allows the application to create and update conservation site records on behalf of the signed-in admin.",
+        "userConsentDisplayName": null,
+        "userConsentDescription": null
+      }
+    ],
+    "appRoles": []
+  },
+  "requiredPermissions": [
+    {
+      "resource": "MicrosoftGraph",
+      "delegated": ["User.Read", "openid", "profile", "offline_access"],
+      "application": []
+    },
+    {
+      "resource": "11111111-2222-3333-4444-555555555555",
+      "delegated": ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+      "application": []
+    }
+  ],
+  "obo": {
+    "enabled": true,
+    "knownClientApplicationIds": [
+      "22222222-3333-4444-5555-666666666666"
+    ]
+  },
+  "preAuthorizedApplications": [
+    {
+      "appId": "22222222-3333-4444-5555-666666666666",
+      "delegatedScopeIds": [
+        "33333333-4444-5555-6666-777777777777"
+      ]
+    }
+  ],
+  "optionalClaims": {
+    "accessToken": [
+      {"name": "groups", "essential": false}
+    ]
+  }
+}
