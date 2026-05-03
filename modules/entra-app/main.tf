@@ -50,21 +50,30 @@ locals {
     "Group.Read.All"                  = "5b567255-7703-4780-807c-7be8301ae99b"
   }
 
-  // Build the resource access rows for required permissions.
-  graph_permissions = flatten([
-    for permission in local.params.requiredPermissions : (
-      permission.resource == "MicrosoftGraph" ? concat(
-        [for name in try(permission.delegated, []) : {
-          id   = local.ms_graph_delegated[name]
-          type = "Scope"
-        }],
-        [for name in try(permission.application, []) : {
-          id   = local.ms_graph_application[name]
-          type = "Role"
-        }],
-      ) : []
+  // Map of resource_app_id -> list of {id, type} permission entries.
+  // For "MicrosoftGraph" entries, names are resolved via the lookup tables
+  // above. For any other resource (a downstream Entra app's appId GUID),
+  // delegated/application arrays must contain raw scope/role GUIDs that the
+  // consumer reads from the downstream app's oauth2PermissionScopes / appRoles.
+  // Schema disallows multiple entries with the same `resource`; if violated,
+  // Terraform errors with a duplicate map key.
+  permissions_by_resource = {
+    for permission in try(local.params.requiredPermissions, []) :
+    (permission.resource == "MicrosoftGraph" ? local.ms_graph_app_id : permission.resource) => concat(
+      permission.resource == "MicrosoftGraph" ? [
+        for name in try(permission.delegated, []) : { id = local.ms_graph_delegated[name], type = "Scope" }
+        ] : [
+        for guid in try(permission.delegated, []) : { id = guid, type = "Scope" }
+      ],
+      permission.resource == "MicrosoftGraph" ? [
+        for name in try(permission.application, []) : { id = local.ms_graph_application[name], type = "Role" }
+        ] : [
+        for guid in try(permission.application, []) : { id = guid, type = "Role" }
+      ],
     )
-  ])
+  }
+
+  pre_authorized = try(local.params.preAuthorizedApplications, [])
 }
 
 // The calling identity (SP in CI, user locally) needs to own every app it
@@ -164,13 +173,16 @@ resource "azuread_application" "this" {
     redirect_uris = local.public_uris
   }
 
-  required_resource_access {
-    resource_app_id = local.ms_graph_app_id
-    dynamic "resource_access" {
-      for_each = local.graph_permissions
-      content {
-        id   = resource_access.value.id
-        type = resource_access.value.type
+  dynamic "required_resource_access" {
+    for_each = local.permissions_by_resource
+    content {
+      resource_app_id = required_resource_access.key
+      dynamic "resource_access" {
+        for_each = required_resource_access.value
+        content {
+          id   = resource_access.value.id
+          type = resource_access.value.type
+        }
       }
     }
   }
@@ -224,4 +236,15 @@ resource "azuread_application_federated_identity_credential" "this" {
   audiences      = [each.value.audience]
   issuer         = each.value.issuer
   subject        = each.value.subject
+}
+
+// Pre-authorised client applications (OBO + downstream API pattern). Listing a
+// client app's appId here means users of that client never see a consent
+// prompt for the listed scopes when calling this app; consent is implicit.
+resource "azuread_application_pre_authorized" "this" {
+  for_each = { for entry in local.pre_authorized : entry.appId => entry }
+
+  application_id       = azuread_application.this.id
+  authorized_client_id = each.value.appId
+  permission_ids       = each.value.delegatedScopeIds
 }

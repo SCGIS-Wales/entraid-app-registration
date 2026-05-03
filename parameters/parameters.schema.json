@@ -131,12 +131,44 @@
     "requiredPermissions": {
       "type": "array",
       "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "required": ["resource"],
+            "additionalProperties": false,
+            "properties": {
+              "resource": {"const": "MicrosoftGraph"},
+              "delegated": {"type": "array", "items": {"type": "string", "minLength": 1}},
+              "application": {"type": "array", "items": {"type": "string", "minLength": 1}}
+            }
+          },
+          {
+            "type": "object",
+            "required": ["resource"],
+            "additionalProperties": false,
+            "properties": {
+              "resource": {"$ref": "#/$defs/uuid"},
+              "delegated": {"type": "array", "items": {"$ref": "#/$defs/uuid"}},
+              "application": {"type": "array", "items": {"$ref": "#/$defs/uuid"}}
+            }
+          }
+        ]
+      }
+    },
+    "preAuthorizedApplications": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
         "type": "object",
-        "required": ["resource"],
+        "required": ["appId", "delegatedScopeIds"],
+        "additionalProperties": false,
         "properties": {
-          "resource": {"enum": ["MicrosoftGraph"]},
-          "delegated": {"type": "array", "items": {"type": "string"}},
-          "application": {"type": "array", "items": {"type": "string"}}
+          "appId": {"$ref": "#/$defs/uuid"},
+          "delegatedScopeIds": {
+            "type": "array",
+            "items": {"$ref": "#/$defs/uuid"},
+            "minItems": 1
+          }
         }
       }
     },
@@ -179,6 +211,10 @@
     }
   },
   "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
     "optionalClaim": {
       "type": "object",
       "required": ["name"],
