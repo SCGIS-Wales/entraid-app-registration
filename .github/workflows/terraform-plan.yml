@@ -1,0 +1,159 @@
+name: terraform-plan
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: terraform-plan-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_IN_AUTOMATION: "true"
+  ARM_USE_OIDC: "true"
+
+jobs:
+  validate-schema:
+    name: Validate parameters JSON
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - run: pip install --quiet jsonschema
+
+      - name: Validate apps/*/*.json against schema
+        run: |
+          python - <<'PY'
+          import json, glob, sys
+          from jsonschema import Draft202012Validator
+
+          schema = json.load(open("parameters/parameters.schema.json"))
+          Draft202012Validator.check_schema(schema)
+          validator = Draft202012Validator(schema)
+
+          failures = []
+          paths = sorted(glob.glob("apps/*/*.json"))
+          if not paths:
+              print("No app parameter files found under apps/<env>/. Nothing to validate.")
+              sys.exit(0)
+
+          for path in paths:
+              try:
+                  data = json.load(open(path))
+              except Exception as exc:
+                  failures.append((path, [f"invalid JSON: {exc}"]))
+                  continue
+
+              errors = sorted(validator.iter_errors(data), key=lambda e: list(e.path))
+              env_dir = path.split("/")[1]
+              if data.get("environment") != env_dir:
+                  errors.append(
+                      type("E", (), {"message": f"environment={data.get('environment')!r} does not match directory apps/{env_dir}/", "path": ["environment"]})()
+                  )
+
+              if errors:
+                  failures.append((path, errors))
+              else:
+                  print(f"OK   {path}")
+
+          if failures:
+              print()
+              for path, errors in failures:
+                  print(f"FAIL {path}")
+                  for err in errors:
+                      pointer = "/" + "/".join(str(p) for p in err.path) if list(err.path) else "<root>"
+                      print(f"     {pointer}: {err.message}")
+              sys.exit(1)
+
+          print(f"\nAll {len(paths)} parameter file(s) OK.")
+          PY
+
+  terraform-fmt:
+    name: Terraform fmt
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ vars.TF_VERSION }}
+      - run: terraform fmt -check -recursive
+
+  plan-dev:
+    name: terraform plan (dev)
+    runs-on: ubuntu-24.04
+    needs: [validate-schema, terraform-fmt]
+    environment: dev
+    defaults:
+      run:
+        working-directory: envs/dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ vars.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        env:
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+        run: |
+          terraform init -no-color \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RG }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_SA }}" \
+            -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" \
+            -backend-config="key=${{ vars.TFSTATE_KEY }}"
+
+      - name: terraform validate
+        run: terraform validate -no-color
+
+      - name: terraform plan
+        id: plan
+        env:
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+        run: |
+          set +e
+          terraform plan -no-color -input=false -out=tfplan
+          ec=$?
+          terraform show -no-color tfplan > plan.txt 2>/dev/null || true
+          exit $ec
+
+      - name: Comment plan on PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            let body = '### Terraform plan: `dev`\n\n';
+            try {
+              const text = fs.readFileSync('envs/dev/plan.txt', 'utf8');
+              const truncated = text.length > 60000
+                ? text.slice(0, 60000) + '\n\n... (truncated, see workflow logs for full output)'
+                : text;
+              body += '```hcl\n' + truncated + '\n```';
+            } catch (err) {
+              body += '_Plan output not available._\n\n' + err.message;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
