@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "2.0",
+  "appName": "aws-agent-smoke",
+  "displayName": "AWS Agent Smoke Test (dev)",
+  "environment": "dev",
+  "businessUnit": "PLATFORM",
+  "changeTicket": "CHG000003",
+  "owner": {
+    "groupObjectId": "00000000-0000-0000-0000-000000000000",
+    "primaryContact": "dejan.gregor@gmail.com"
+  },
+  "tags": {
+    "purpose": "pipeline-aws-agent-smoke",
+    "environment": "dev"
+  },
+  "signInAudience": "AzureADMyOrg",
+  "tokenVersion": 2,
+  "platforms": {
+    "spa": {
+      "enabled": false,
+      "redirectUris": []
+    },
+    "web": {
+      "enabled": false,
+      "redirectUris": [],
+      "implicitGrant": {
+        "accessToken": false,
+        "idToken": false
+      }
+    },
+    "publicClient": {
+      "enabled": false,
+      "redirectUris": []
+    }
+  },
+  "exposedApi": {
+    "enabled": false,
+    "scopes": [],
+    "appRoles": []
+  },
+  "requiredPermissions": [],
+  "federatedCredentials": [
+    {
+      "name": "aws-smoke-test",
+      "issuer": "https://a1155b95-2aec-4c9b-90dd-cd5038486a9e.tokens.sts.global.api.aws",
+      "subject": "arn:aws:iam::764914226202:role/scgis-test-entra-agent",
+      "audience": "api://AzureADTokenExchange",
+      "description": "Smoke test: AWS role scgis-test-entra-agent in 764914226202."
+    }
+  ]
+}
