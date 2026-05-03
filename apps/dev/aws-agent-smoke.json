@@ -38,13 +38,7 @@
     "scopes": [],
     "appRoles": []
   },
-  "requiredPermissions": [
-    {
-      "resource": "MicrosoftGraph",
-      "delegated": [],
-      "application": []
-    }
-  ],
+  "requiredPermissions": [],
   "federatedCredentials": [
     {
       "name": "aws-smoke-test",

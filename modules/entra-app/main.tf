@@ -57,7 +57,7 @@ locals {
   // consumer reads from the downstream app's oauth2PermissionScopes / appRoles.
   // Schema disallows multiple entries with the same `resource`; if violated,
   // Terraform errors with a duplicate map key.
-  permissions_by_resource = {
+  permissions_by_resource_raw = {
     for permission in try(local.params.requiredPermissions, []) :
     (permission.resource == "MicrosoftGraph" ? local.ms_graph_app_id : permission.resource) => concat(
       permission.resource == "MicrosoftGraph" ? [
@@ -71,6 +71,12 @@ locals {
         for guid in try(permission.application, []) : { id = guid, type = "Role" }
       ],
     )
+  }
+
+  // Filter out resources with zero permissions — azuread_application requires
+  // at least one resource_access block per required_resource_access entry.
+  permissions_by_resource = {
+    for k, v in local.permissions_by_resource_raw : k => v if length(v) > 0
   }
 
   pre_authorized = try(local.params.preAuthorizedApplications, [])
