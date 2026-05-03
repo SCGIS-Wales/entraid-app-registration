@@ -67,6 +67,12 @@ locals {
   ])
 }
 
+// The calling identity (SP in CI, user locally) needs to own every app it
+// creates so it can keep managing it via Application.ReadWrite.OwnedBy.
+// Without this, azuread_service_principal.this hangs indefinitely because
+// the SP cannot see the application it just created.
+data "azuread_client_config" "current" {}
+
 // Stable scope IDs across runs. Random is OK because the provider
 // preserves it in state across applies.
 resource "random_uuid" "scope" {
@@ -81,6 +87,8 @@ resource "azuread_application" "this" {
   display_name     = local.params.displayName
   description      = "Provisioned via Terraform from parameters JSON. Change ticket: ${local.params.changeTicket}."
   sign_in_audience = local.params.signInAudience
+
+  owners = [data.azuread_client_config.current.object_id]
 
   identifier_uris = local.identifier_uris
 
@@ -199,6 +207,8 @@ resource "azuread_service_principal" "this" {
   client_id = azuread_application.this.client_id
 
   app_role_assignment_required = false
+
+  owners = [data.azuread_client_config.current.object_id]
 
   feature_tags {
     enterprise = true
