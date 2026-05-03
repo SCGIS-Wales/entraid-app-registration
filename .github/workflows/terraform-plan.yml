@@ -31,7 +31,7 @@ jobs:
 
       - run: pip install --quiet jsonschema
 
-      - name: Validate apps/*/*.json against schema
+      - name: Validate apps/*/*.json + parameters/examples/*.json against schema
         run: |
           python - <<'PY'
           import json, glob, sys
@@ -42,12 +42,17 @@ jobs:
           validator = Draft202012Validator(schema)
 
           failures = []
-          paths = sorted(glob.glob("apps/*/*.json"))
+          # Apply targets — these go through terraform.
+          app_paths = sorted(glob.glob("apps/*/*.json"))
+          # Reference examples — never applied; validated to prevent bit-rot.
+          example_paths = sorted(glob.glob("parameters/examples/*.json"))
+          paths = [(p, True) for p in app_paths] + [(p, False) for p in example_paths]
+
           if not paths:
-              print("No app parameter files found under apps/<env>/. Nothing to validate.")
+              print("No parameter files found. Nothing to validate.")
               sys.exit(0)
 
-          for path in paths:
+          for path, is_app in paths:
               try:
                   data = json.load(open(path))
               except Exception as exc:
@@ -55,16 +60,21 @@ jobs:
                   continue
 
               errors = sorted(validator.iter_errors(data), key=lambda e: list(e.path))
-              env_dir = path.split("/")[1]
-              if data.get("environment") != env_dir:
-                  errors.append(
-                      type("E", (), {"message": f"environment={data.get('environment')!r} does not match directory apps/{env_dir}/", "path": ["environment"]})()
-                  )
+
+              # Apps are constrained to live under their declared environment.
+              # Examples have no environment-directory invariant.
+              if is_app:
+                  env_dir = path.split("/")[1]
+                  if data.get("environment") != env_dir:
+                      errors.append(
+                          type("E", (), {"message": f"environment={data.get('environment')!r} does not match directory apps/{env_dir}/", "path": ["environment"]})()
+                      )
 
               if errors:
                   failures.append((path, errors))
               else:
-                  print(f"OK   {path}")
+                  kind = "APP " if is_app else "EX  "
+                  print(f"OK   {kind}{path}")
 
           if failures:
               print()
